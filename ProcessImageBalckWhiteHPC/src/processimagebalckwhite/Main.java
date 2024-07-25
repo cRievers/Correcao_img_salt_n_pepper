@@ -6,7 +6,8 @@ import java.io.File;
 import java.io.IOException;
 import javax.imageio.ImageIO;
 
-class ProcessImageBalckWhite {
+
+class ProcessImageBlackWhite extends Thread{
 
     public static int[][] lerPixels(String caminho) {
 
@@ -19,7 +20,7 @@ class ProcessImageBalckWhite {
             int[][] pixels = new int[largura][altura];
             for (int i = 0; i < largura; i++) {
                 for (int j = 0; j < altura; j++) {
-					//normalizando de forma simplificada para imagem escala de cinza (é esperado ocorrer "clareamento")
+                    //normalizando de forma simplificada para imagem escala de cinza (é esperado ocorrer "clareamento")
                     float vermelho = new Color(bufferedImage.getRGB(i, j)).getRed();
                     float verde = new Color(bufferedImage.getRGB(i, j)).getGreen();
                     float azul = new Color(bufferedImage.getRGB(i, j)).getBlue();
@@ -38,11 +39,11 @@ class ProcessImageBalckWhite {
     }
 
     public static void gravarPixels(String caminhoGravar, int pixels[][]) {
-        
+
         caminhoGravar = caminhoGravar
                 .replace(".png", "_modificado.png")
                 .replace(".jpg", "_modificado.jpg");
-        
+
         int largura = pixels.length;
         int altura = pixels[0].length;
 
@@ -68,7 +69,7 @@ class ProcessImageBalckWhite {
             System.err.println("Erro no caminho indicado pela imagem");
         }
     }
-    
+
     /**
      * Varre toda a matriz de pixels à procura de pontos pretos (0)
      * ou brancos (255) [do efeito salt and pepper] e substitui pelos pixels ao redor.
@@ -76,12 +77,15 @@ class ProcessImageBalckWhite {
      *
      * @return Retorna uma matriz de pixels com os pontos corrigidos.
      */
-    public static int[][] corrigirImagem(int imgMat[][]){
-        int ultimaLinha = imgMat.length - 1;
-        int ultimaColuna = imgMat[0].length - 1;
-        
-        for (int linha = 0; linha <= ultimaLinha; linha++) { //percorre as linhas
-            for (int coluna = 0; coluna <= ultimaColuna; coluna++) { //percorre as colunas
+    public int[][] corrigirImagem(int imgMat[][]){
+        int limLinha = imgMat.length - 1;
+        int limColuna = imgMat[0].length - 1;
+
+        if(linhaF >= limLinha) linhaF = limLinha;
+
+        for (int linha = linhaI; linha <= linhaF; linha++) { //percorre as linhas
+            for (int coluna = 0; coluna <= limColuna; coluna++) { //percorre as colunas
+
                 int pixel = imgMat[linha][coluna];
                 if (pixel == 0 || pixel == 255) { //testa se é preto ou branco
                     int soma = 0;
@@ -91,9 +95,9 @@ class ProcessImageBalckWhite {
                             int lin = linha + l;
                             int col = coluna + c;
                             if ( !(lin < 0 || col < 0) &&
-                                    (lin <= ultimaLinha && col <= ultimaColuna)) { //se a posição for válida
+                                    (lin <= limLinha && col <= limColuna)) { //se a posição for válida
                                 int pix = imgMat[lin][col];
-                                if (!(pix == 0 || pix == 255)) { //se n for preto/branco 
+                                if (!(pix == 0 || pix == 255)) { //se n for preto/branco
                                     div++;
                                     soma += pix;
                                 }
@@ -109,23 +113,65 @@ class ProcessImageBalckWhite {
         }
         return imgMat;
     }
-        
+    @Override
+    public void run(){
+        corrigirImagem(imgMat);
+    }
+
+    private static int imgMat[][];
+    private int linhaI;
+    private int linhaF;
+
+    public ProcessImageBlackWhite(int imgMat[][], int linhaI, int linhaF) {
+        this.imgMat = imgMat;
+        this.linhaI = linhaI;
+        this.linhaF = linhaF;
+    }
+}
+
+class Main{
     public static void main(String args[]){
 
-        File directory = new File("C:\\Users\\Caio Rievers\\Desktop\\Imagens\\modificadas");
+        File directory = new File("D:\\Projetos\\BachelorDegreeIT\\Arquitetura e Organização de Computadores" +
+                "\\projeto e arquivos para o problema de imagens\\Imagens\\modificadas");
         File imagesFile[] = directory.listFiles();
-        
-        //imagens que precisam ser corrigidas
+
+        int numeroThreads = Runtime.getRuntime().availableProcessors();
+        int linhaIni = 0;
+        int qntPorLinha=0;
+        ProcessImageBlackWhite[] processadores = new ProcessImageBlackWhite[numeroThreads];
+
         for(File img : imagesFile){
-            int imgMat[][] = lerPixels(img.getAbsolutePath());
-            
-            //fica a seu critério modificar essa invocação
-            imgMat = corrigirImagem(imgMat);
-            
+            int imgMat[][] = ProcessImageBlackWhite.lerPixels(img.getAbsolutePath());
+            //Qnt de linha para cada "processador"
+            qntPorLinha = imgMat.length/numeroThreads;
+            linhaIni = 0;
+
+            for (int i = 0; i < numeroThreads; i++) {
+
+                processadores[i] = new ProcessImageBlackWhite(imgMat,linhaIni,linhaIni+qntPorLinha);
+                processadores[i].start();
+
+                if(i!=numeroThreads-1){
+                    linhaIni += qntPorLinha+1;
+                }else{
+                    linhaIni = imgMat.length-linhaIni-1;
+                }
+
+            }
             //grava nova imagem com as correções
+            for (ProcessImageBlackWhite p: processadores){
+                try {
+                    p.join();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+
             if(imgMat != null){
-                gravarPixels(img.getAbsolutePath(), imgMat);
+                ProcessImageBlackWhite.gravarPixels(img.getAbsolutePath(), imgMat);
             }
         }
+
     }
 }
