@@ -4,69 +4,11 @@ import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
-import java.util.Stack;
 import javax.imageio.ImageIO;
 
-public class Principal {
-    public static void main(String[] args) {
-        
-        String caminho = args[0];
-        
-        int numThreads = Runtime.getRuntime().availableProcessors();
-        Trabalhador[] processadores = new Trabalhador[numThreads];
-        
-        for (int i = 0; i < numThreads; i++) {
-            processadores[i] = new Trabalhador();
-        }
-        
-        File directory = new File(caminho);
-        File imagesFile[] = directory.listFiles();
-        
-        Trabalhador.addImagens(imagesFile);
-        
-        long tempoInicial = System.currentTimeMillis();
-        
-        for(Trabalhador t: processadores){
-            t.start();
-        }
-        
-        //barrareira de sincronizacao
-        for(Trabalhador t: processadores){
-            try {
-                t.join();
-            } catch (InterruptedException ex) {
-                System.err.println("Threads filhas não haviam terminado sua tarefa");
-            }
-        }
-        
-        long tempoFinal = System.currentTimeMillis();
-        double tempoTotal = (tempoFinal - tempoInicial)/1000.0;
-        
-        System.out.printf("Tempo total: %.3f segundos.\n", tempoTotal);
-        
-    }
-}
+class Sequencial {
 
-class Trabalhador extends Thread {
-    
-    private static Stack<File> imagensProcessar = new Stack<>();
-    
-    public static void addImagens(File img[]){
-        for(File imagem : img)
-            imagensProcessar.push(imagem);
-    }
-    
-    private File removeImagem(){
-        synchronized(imagensProcessar){
-            if(imagensProcessar.isEmpty())
-                return null;
-            else
-                return imagensProcessar.pop(); //remove o ult. da pilha
-        }
-    }
-    
-    private static int[][] lerPixels(String caminho) {
-
+    public static int[][] lerPixels(String caminho) {
         BufferedImage bufferedImage;
         try {
             bufferedImage = ImageIO.read(new File(caminho));
@@ -85,26 +27,21 @@ class Trabalhador extends Thread {
                     pixels[i][j] = escalaCinza;
                 }
             }
-
             return pixels;
         } catch (IOException ex) {
             System.err.println("Erro no caminho indicado pela imagem");
         }
-
         return null;
     }
-    
-    private static void gravarPixels(String caminhoGravar, int pixels[][]) {
-        
+
+    public static void gravarPixels(String caminhoGravar, int pixels[][]) {
         caminhoGravar = caminhoGravar
                 .replace(".png", "_modificado.png")
                 .replace(".jpg", "_modificado.jpg");
-        
         int largura = pixels.length;
         int altura = pixels[0].length;
 
         BufferedImage imagem = new BufferedImage(largura, altura, BufferedImage.TYPE_BYTE_GRAY);
-
         //transformando a mat. em um vetor de bytes
         byte bytesPixels[] = new byte[largura * altura];
         for (int x = 0; x < largura; x++) {
@@ -112,10 +49,8 @@ class Trabalhador extends Thread {
                 bytesPixels[y * (largura) + x] = (byte) pixels[x][y];
             }
         }
-
-        //copaindo todos os bytes para a nova imagem
+        //copiando todos os bytes para a nova imagem
         imagem.getRaster().setDataElements(0, 0, largura, altura, bytesPixels);
-
         //criamos o arquivo e gravamos os bytes da imagem nele
         File ImageFile = new File(caminhoGravar);
         try {
@@ -133,7 +68,7 @@ class Trabalhador extends Thread {
      *
      * @return Retorna uma matriz de pixels com os pontos corrigidos.
      */
-    private static int[][] corrigirImagem(int imgMat[][]){
+    public static int[][] corrigirImagem(int imgMat[][]){
         int ultimaLinha = imgMat.length - 1;
         int ultimaColuna = imgMat[0].length - 1;
         
@@ -167,18 +102,27 @@ class Trabalhador extends Thread {
         return imgMat;
     }
     
-    @Override
-    public void run() {
-        while(!imagensProcessar.isEmpty()) {
-            File imagemAtual = removeImagem();
-            int imgMat[][] = lerPixels(imagemAtual.getAbsolutePath());
+    //recebe o endereco do diretório que contém as imagens a serem modificadas
+    public static void main(String args[]){
 
+        File directory = new File(args[0]);
+        File imagesFile[] = directory.listFiles();
+        
+        long tempoI = System.currentTimeMillis();
+        
+        //imagens que precisam ser corrigidas
+        for(File img : imagesFile){
+            int imgMat[][] = lerPixels(img.getAbsolutePath());
+            
             imgMat = corrigirImagem(imgMat);
-
+            
             //grava nova imagem com as correções
-            if(imgMat != null)
-                gravarPixels(imagemAtual.getAbsolutePath(), imgMat);
+            if(imgMat != null){
+                gravarPixels(img.getAbsolutePath(), imgMat);
+            }
         }
+        long tempoF = System.currentTimeMillis();
+        double tempoT = (tempoF - tempoI) / 1000.0;
+        System.out.printf("Tempo total: %.3f segundos.\n", tempoT);
     }
-    
 }
